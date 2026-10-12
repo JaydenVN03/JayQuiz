@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import type { ReactNode } from "react";
 import { Geist, Geist_Mono } from "next/font/google";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
@@ -23,7 +24,7 @@ export const metadata: Metadata = {
     "Ôn tập theo cách của bạn với các bộ đề trắc nghiệm JayQuiz. Học một chút mỗi ngày, tiến bộ thật nhiều.",
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html
       lang="vi"
