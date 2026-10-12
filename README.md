@@ -537,7 +537,7 @@ supabase start
 supabase db reset
 ```
 
-`db reset` áp dụng migration trong `supabase/migrations/` và nạp `supabase/seed.sql`; lệnh có thể chạy lại để tái tạo database local. `seed.sql` tạo môn Toán, chương Số học cơ bản và đề Phép tính cơ bản. Các truy vấn ứng dụng dùng `public_subjects`, `public_chapters`, `public_quizzes` và `public_quiz_content`; không cấp quyền đọc trực tiếp các bảng chứa đáp án cho anon. Tài khoản Admin phải được cấp trong `admin_profiles` qua SQL/dashboard đáng tin cậy, không cho phép tự đăng ký quyền Admin.
+`db reset` áp dụng migration trong `supabase/migrations/` và nạp `supabase/seed.sql`; lệnh có thể chạy lại để tái tạo database local. `seed.sql` tạo môn Toán, ba chương và năm bộ đề đã xuất bản, mỗi bộ đề gồm hai câu hỏi. Bốn bộ đề bổ sung được chia đều vào chương Phân số và số thập phân và Hình học cơ bản. Có thể chạy nội dung seed trong SQL Editor của Supabase để thêm/cập nhật dữ liệu mẫu trên project đã có schema; không cần chạy `db reset` trên database production. Các truy vấn ứng dụng dùng `public_subjects`, `public_chapters`, `public_quizzes` và `public_quiz_content`; không cấp quyền đọc trực tiếp các bảng chứa đáp án cho anon. Tài khoản Admin phải được cấp trong `admin_profiles` qua SQL/dashboard đáng tin cậy, không cho phép tự đăng ký quyền Admin.
 
 Để cấp quyền Admin đầu tiên trên project:
 

@@ -31,7 +31,7 @@ async function SubjectsContent() {
   }
 
   return (
-    <main className="site-shell">
+    <main className="site-shell subjects-page">
       {schemaNotReady && <SupabaseSetupNotice />}
       <section className="page-intro">
         <nav className="breadcrumbs" aria-label="Đường dẫn">
@@ -67,7 +67,7 @@ async function SubjectsContent() {
 
 function SubjectsLoading() {
   return (
-    <main className="site-shell">
+    <main className="site-shell subjects-page">
       <section className="page-intro">
         <span className="eyebrow">GÓC HỌC TẬP</span>
         <h1>Đang tải môn học...</h1>

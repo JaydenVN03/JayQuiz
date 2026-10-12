@@ -38,7 +38,7 @@ async function HomeContent() {
   const featuredQuizzes = quizzes.slice(0, 3);
 
   return (
-    <main>
+    <main className="site-shell home-page">
       <section className="hero">
         <div className="hero-copy">
           <span className="eyebrow"><span className="eyebrow-dot" /> HỌC NHẸ NHÀNG, NHỚ LÂU HƠN</span>
