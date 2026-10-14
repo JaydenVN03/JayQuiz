@@ -109,6 +109,7 @@ Nguyên tắc:
 | ADM-10 | Nháp/xuất bản | Kiểm soát nội dung công khai | P0 |
 | ADM-11 | Xem trước | Xem đề theo giao diện người dùng | P0 |
 | ADM-12 | Import/export | Nhập/xuất dữ liệu hàng loạt | P1 |
+| ADM-13 | Xóa hàng loạt | Chọn và xóa nhiều môn học, chương, bộ đề hoặc câu hỏi cùng lúc | P1 |
 
 ---
 
@@ -123,6 +124,7 @@ Nguyên tắc:
 5. Thứ tự hiển thị phải được lưu rõ ràng qua trường `sort_order`.
 6. Không xóa cứng nội dung đang được bộ đề đã xuất bản sử dụng nếu việc xóa làm hỏng dữ liệu tham chiếu. Ưu tiên kiểm tra quan hệ và/hoặc lưu trữ.
 7. Khi Admin sửa nội dung đã xuất bản, hệ thống phải tăng phiên bản bộ đề hoặc có chiến lược phát hiện nội dung thay đổi.
+8. Xóa hàng loạt phải được xác nhận; nếu có mục đang được nội dung khác sử dụng, từ chối toàn bộ thao tác thay vì xóa một phần.
 
 ### 5.2. Làm bài
 

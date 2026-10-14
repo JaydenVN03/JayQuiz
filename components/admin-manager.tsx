@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState, useState } from "react";
+import { useActionState, useCallback, useEffect, useState } from "react";
 import {
+  bulkDeleteAdminContent,
   deleteAdminContent,
   saveAdminContent,
   type AdminFormState,
@@ -49,6 +50,12 @@ const titles: Record<Section, { title: string; description: string }> = {
   chapters: { title: "Chương", description: "Tổ chức nội dung theo chương và môn học." },
   quizzes: { title: "Bộ đề", description: "Soạn đề, chọn câu hỏi, xem trước và xuất bản." },
   questions: { title: "Câu hỏi", description: "Quản lý câu hỏi, lựa chọn đáp án và lời giải." },
+};
+const singularLabels: Record<Section, string> = {
+  subjects: "môn học",
+  chapters: "chương",
+  quizzes: "bộ đề",
+  questions: "câu hỏi",
 };
 
 function StatusField({ value = "draft" }: { value?: string }) {
@@ -153,6 +160,44 @@ function DeleteForm({ entity, id, name }: { entity: Section; id: string; name: s
       <input name="id" type="hidden" value={id} />
       <button className="admin-delete-button" disabled={pending} type="submit">
         {pending ? "Đang xóa..." : "Xóa"}
+      </button>
+      {state.message && (
+        <p aria-live="polite" className={`admin-form-message ${state.success ? "is-success" : "is-error"}`}>
+          {state.message}
+        </p>
+      )}
+    </form>
+  );
+}
+
+function BulkDeleteForm({
+  entity,
+  ids,
+  onDeleted,
+}: {
+  entity: Section;
+  ids: string[];
+  onDeleted: () => void;
+}) {
+  const [state, action, pending] = useActionState(bulkDeleteAdminContent, initialState);
+  useEffect(() => {
+    if (state.success) onDeleted();
+  }, [onDeleted, state]);
+
+  return (
+    <form
+      action={action}
+      className="admin-bulk-delete-form"
+      onSubmit={(event) => {
+        if (!window.confirm(`Bạn có chắc muốn xóa ${ids.length} ${singularLabels[entity]} đã chọn? Nếu có mục đang được nội dung khác sử dụng, toàn bộ thao tác sẽ bị từ chối.`)) {
+          event.preventDefault();
+        }
+      }}
+    >
+      <input name="entity" type="hidden" value={entity} />
+      {ids.map((id) => <input key={id} name="id" type="hidden" value={id} />)}
+      <button className="admin-delete-button" disabled={pending || ids.length === 0} type="submit">
+        {pending ? "Đang xóa..." : `Xóa mục đã chọn (${ids.length})`}
       </button>
       {state.message && (
         <p aria-live="polite" className={`admin-form-message ${state.success ? "is-success" : "is-error"}`}>
@@ -342,19 +387,36 @@ function RecordCard({
   children,
   entity,
   id,
+  selected,
+  onSelectionChange,
 }: {
   title: string;
   subtitle: string;
   children: React.ReactNode;
   entity: Section;
-  id?: string;
+  id: string;
+  selected: boolean;
+  onSelectionChange: (id: string, selected: boolean) => void;
 }) {
   return (
     <article className="admin-record-card">
       <details>
-        <summary><span><strong>{title}</strong><small>{subtitle}</small></span><span className="admin-edit-indicator">Chỉnh sửa⌄</span></summary>
+        <summary>
+          <span className="admin-record-summary">
+            <label className="admin-record-select" onClick={(event) => event.stopPropagation()}>
+              <input
+                aria-label={`Chọn ${title} để xóa`}
+                checked={selected}
+                onChange={(event) => onSelectionChange(id, event.target.checked)}
+                type="checkbox"
+              />
+            </label>
+            <span className="admin-record-title"><strong>{title}</strong><small>{subtitle}</small></span>
+          </span>
+          <span className="admin-edit-indicator">Chỉnh sửa⌄</span>
+        </summary>
         {children}
-        {id && <DeleteForm entity={entity} id={id} name={title} />}
+        <DeleteForm entity={entity} id={id} name={title} />
       </details>
     </article>
   );
@@ -365,6 +427,7 @@ export function AdminManager(props: AdminManagerProps) {
   const [showCreate, setShowCreate] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | ContentStatus>("all");
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const title = titles[section];
   const records = {
     subjects: props.subjects,
@@ -379,6 +442,26 @@ export function AdminManager(props: AdminManagerProps) {
       && (!normalizedQuery || label.toLocaleLowerCase("vi").includes(normalizedQuery));
   }).map((record) => record.id));
   const hasFilters = normalizedQuery.length > 0 || statusFilter !== "all";
+  const allVisibleSelected = visibleIds.size > 0 && Array.from(visibleIds).every((id) => selectedIds.has(id));
+  const clearSelection = useCallback(() => setSelectedIds(new Set()), []);
+  const changeSelection = useCallback((id: string, selected: boolean) => {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (selected) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }, []);
+  const toggleVisibleSelection = () => {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      for (const id of visibleIds) {
+        if (allVisibleSelected) next.delete(id);
+        else next.add(id);
+      }
+      return next;
+    });
+  };
 
   return (
     <>
@@ -423,6 +506,11 @@ export function AdminManager(props: AdminManagerProps) {
             </select>
           </label>
           <span aria-live="polite" className="admin-result-count">{visibleIds.size}/{records.length} mục</span>
+          <label className="admin-select-visible">
+            <input checked={allVisibleSelected} onChange={toggleVisibleSelection} type="checkbox" />
+            Chọn tất cả đang hiển thị
+          </label>
+          <BulkDeleteForm entity={section} ids={Array.from(selectedIds)} onDeleted={clearSelection} />
         </section>
       )}
       {records.length === 0 ? (
@@ -444,12 +532,12 @@ export function AdminManager(props: AdminManagerProps) {
       ) : (
         <div className="admin-record-list">
           {section === "subjects" && props.subjects.filter((subject) => visibleIds.has(subject.id)).map((subject) => (
-            <RecordCard entity={section} id={subject.id} key={subject.id} subtitle={`${statusLabels[subject.status]} · thứ tự ${subject.sort_order}`} title={subject.name}>
+            <RecordCard entity={section} id={subject.id} key={subject.id} onSelectionChange={changeSelection} selected={selectedIds.has(subject.id)} subtitle={`${statusLabels[subject.status]} · thứ tự ${subject.sort_order}`} title={subject.name}>
               <SubjectForm value={subject} />
             </RecordCard>
           ))}
           {section === "chapters" && props.chapters.filter((chapter) => visibleIds.has(chapter.id)).map((chapter) => (
-            <RecordCard entity={section} id={chapter.id} key={chapter.id} subtitle={`${props.subjects.find((subject) => subject.id === chapter.subject_id)?.name ?? "Môn học"} · ${statusLabels[chapter.status]}`} title={chapter.title}>
+            <RecordCard entity={section} id={chapter.id} key={chapter.id} onSelectionChange={changeSelection} selected={selectedIds.has(chapter.id)} subtitle={`${props.subjects.find((subject) => subject.id === chapter.subject_id)?.name ?? "Môn học"} · ${statusLabels[chapter.status]}`} title={chapter.title}>
               <ChapterForm subjects={props.subjects} value={chapter} />
             </RecordCard>
           ))}
@@ -457,7 +545,7 @@ export function AdminManager(props: AdminManagerProps) {
             const quizRelations = props.quizQuestions.filter((relation) => relation.quiz_id === quiz.id);
             const questionCount = quizRelations.length;
             return (
-              <RecordCard entity={section} id={quiz.id} key={quiz.id} subtitle={`${props.subjects.find((subject) => subject.id === quiz.subject_id)?.name ?? "Môn học"} · ${statusLabels[quiz.status]} · ${questionCount} câu`} title={quiz.title}>
+              <RecordCard entity={section} id={quiz.id} key={quiz.id} onSelectionChange={changeSelection} selected={selectedIds.has(quiz.id)} subtitle={`${props.subjects.find((subject) => subject.id === quiz.subject_id)?.name ?? "Môn học"} · ${statusLabels[quiz.status]} · ${questionCount} câu`} title={quiz.title}>
                 <QuizForm chapters={props.chapters} questions={props.questions} relations={quizRelations} subjects={props.subjects} value={quiz} />
                 <details className="admin-preview">
                   <summary>Xem trước nội dung đề ({questionCount} câu)</summary>
@@ -479,7 +567,7 @@ export function AdminManager(props: AdminManagerProps) {
             );
           })}
           {section === "questions" && props.questions.filter((question) => visibleIds.has(question.id)).map((question) => (
-            <RecordCard entity={section} id={question.id} key={question.id} subtitle={`${questionTypeLabels[question.type]} · ${question.difficulty ? difficultyLabels[question.difficulty] : "Chưa đặt độ khó"} · ${statusLabels[question.status]}`} title={question.content}>
+            <RecordCard entity={section} id={question.id} key={question.id} onSelectionChange={changeSelection} selected={selectedIds.has(question.id)} subtitle={`${questionTypeLabels[question.type]} · ${question.difficulty ? difficultyLabels[question.difficulty] : "Chưa đặt độ khó"} · ${statusLabels[question.status]}`} title={question.content}>
               <QuestionForm options={props.options} value={question} />
             </RecordCard>
           ))}

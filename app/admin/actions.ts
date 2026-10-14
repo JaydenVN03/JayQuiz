@@ -300,3 +300,30 @@ export async function deleteAdminContent(
   revalidatePath("/subjects", "page");
   return success("Đã xóa nội dung.");
 }
+
+export async function bulkDeleteAdminContent(
+  _previousState: AdminFormState,
+  formData: FormData,
+): Promise<AdminFormState> {
+  const { supabase } = await requireAdmin();
+  const entity = field(formData, "entity");
+  const ids = Array.from(new Set(formData.getAll("id").map((value) => String(value).trim())));
+  if (ids.length === 0) return failure("Vui lòng chọn ít nhất một mục cần xóa.");
+  if (ids.some((id) => !validId(id))) return failure("Danh sách mã nội dung không hợp lệ.");
+
+  const tables = {
+    subjects: "subjects",
+    chapters: "chapters",
+    quizzes: "quizzes",
+    questions: "questions",
+  } as const;
+  if (!Object.hasOwn(tables, entity)) return failure("Loại nội dung không hợp lệ.");
+  const table = tables[entity as keyof typeof tables];
+  const { error } = await supabase.from(table).delete().in("id", ids);
+  if (error) return failure(supabaseErrorMessage(error.message));
+
+  revalidatePath("/admin", "layout");
+  revalidatePath("/", "page");
+  revalidatePath("/subjects", "page");
+  return success(`Đã xóa ${ids.length} mục.`);
+}
