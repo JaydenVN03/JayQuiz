@@ -293,6 +293,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .admin-panel h2 { margin: 0 0 13px; font-size: 16px; font-weight: 640; }
 .admin-dashboard-note { display: flex; align-items: center; justify-content: space-between; gap: 18px; }
 .admin-dashboard-note > div { display: flex; align-items: center; gap: 14px; }
+.admin-dashboard-actions { display: flex; flex: 0 0 auto; flex-wrap: wrap; gap: 9px; }
 .admin-panel-icon { width: 38px; height: 38px; flex: 0 0 38px; display: grid; place-items: center; border-radius: 10px; color: #627645; background: #edf0df; }
 .admin-dashboard-note h2 { margin-bottom: 4px; }
 .admin-dashboard-note p, .admin-workflow { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.8; }
@@ -308,6 +309,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .admin-result-count { flex: 0 0 auto; padding: 0 2px 10px; color: var(--muted); font-size: 10px; }
 .admin-select-visible { display: flex; align-items: center; gap: 7px; padding-bottom: 10px; color: #62695e; font-size: 10px; white-space: nowrap; }
 .admin-select-visible input, .admin-record-select input { accent-color: var(--green); }
+.admin-bulk-actions { display: flex; align-items: center; gap: 9px; margin-left: auto; }
+.admin-bulk-actions .admin-bulk-delete-form { margin-left: 0; }
 .admin-bulk-delete-form { display: flex; align-items: center; gap: 9px; margin-left: auto; }
 .admin-bulk-delete-form .admin-form-message { margin: 0; }
 .admin-clear-filters { margin-top: 16px; }
@@ -346,6 +349,22 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .admin-muted { margin: 6px 0 0; color: var(--muted); font-size: 10px; font-weight: 400; line-height: 1.55; }
 .admin-preview { margin: 0 17px 17px; padding: 13px; border-radius: 7px; background: #f6f6ef; }
 .admin-preview > summary { color: #586446; font-size: 10px; font-weight: 650; cursor: pointer; }
+.admin-excel-import { display: grid; gap: 12px; margin: 0 17px 17px; padding: 14px; border: 1px solid #e8e8e1; border-radius: 7px; background: #fbfbf7; }
+.admin-excel-import-page { display: grid; gap: 18px; }
+.admin-excel-import-page > .admin-field { max-width: 540px; }
+.admin-excel-import-page .admin-excel-import { margin: 0; }
+.admin-excel-no-quizzes { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+.admin-excel-no-quizzes p { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.6; }
+.admin-excel-no-quizzes .button { min-height: 36px; flex: 0 0 auto; font-size: 10px; }
+.admin-excel-import-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.admin-excel-import-heading h3 { margin: 0; font-size: 12px; font-weight: 650; }
+.admin-excel-import-heading p { margin: 5px 0 0; color: var(--muted); font-size: 10px; line-height: 1.6; }
+.admin-excel-actions .button { min-height: 36px; flex: 0 0 auto; font-size: 10px; }
+.admin-excel-import-form { display: flex; align-items: end; gap: 12px; }
+.admin-excel-import-form .admin-field { flex: 1 1 auto; }
+.admin-excel-import-form input[type="file"] { width: 100%; min-height: 38px; padding: 7px; border: 1px solid #e1e3da; border-radius: 6px; background: white; font-size: 10px; }
+.admin-excel-actions { display: flex; flex: 0 0 auto; gap: 8px; }
+.admin-excel-import > .admin-form-message { margin: 0; }
 .admin-preview-question { padding: 13px 0 8px; border-bottom: 1px solid #e8e9df; }
 .admin-preview-question strong { font-size: 11px; line-height: 1.6; }
 .admin-preview-question ul { display: grid; gap: 5px; margin: 8px 0; padding-left: 22px; color: #70776a; font-size: 10px; }
@@ -385,14 +404,19 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   .admin-stat-card strong { font-size: 30px; }
   .admin-panel { padding: 17px; }
   .admin-dashboard-note { align-items: flex-start; flex-direction: column; }
+  .admin-dashboard-actions { width: 100%; }
   .admin-form-grid { grid-template-columns: 1fr; }
   .admin-field-wide { grid-column: auto; }
+  .admin-excel-import-heading, .admin-excel-import-form { align-items: stretch; flex-direction: column; }
+  .admin-excel-actions { flex-wrap: wrap; }
+  .admin-excel-no-quizzes { align-items: flex-start; flex-direction: column; }
   .admin-question-choice { align-items: flex-start; flex-direction: column; }
   .admin-question-choice > label { align-items: flex-start; }
   .admin-order-fields { margin-left: 24px; }
   .admin-list-tools { align-items: stretch; flex-direction: column; gap: 10px; }
   .admin-status-filter { flex-basis: auto; }
   .admin-result-count, .admin-select-visible { padding: 0; }
+  .admin-bulk-actions { align-items: stretch; flex-direction: column; margin-left: 0; }
   .admin-bulk-delete-form { align-items: flex-start; flex-direction: column; margin-left: 0; }
   .site-shell { width: min(100% - 38px, 520px); }
   .site-header { height: 69px; }

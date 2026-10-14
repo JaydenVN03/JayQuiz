@@ -185,7 +185,7 @@ export type Database = {
           p_time_limit_seconds: number | null;
           p_pass_score: number | null;
           p_version: number;
-          p_questions: Json;
+          p_questions: Json | null;
         };
         Returns: undefined;
       };
@@ -200,6 +200,32 @@ export type Database = {
           p_options: Json;
         };
         Returns: undefined;
+      };
+      admin_import_quiz_questions: {
+        Args: {
+          p_quiz_id: string;
+          p_questions: Json;
+        };
+        Returns: number;
+      };
+      admin_add_quiz_question: {
+        Args: {
+          p_quiz_id: string;
+          p_question_id: string;
+          p_content: string;
+          p_type: Database["public"]["Enums"]["question_type"];
+          p_explanation: string | null;
+          p_difficulty: Database["public"]["Enums"]["question_difficulty"] | null;
+          p_status: Database["public"]["Enums"]["content_status"];
+          p_options: Json;
+        };
+        Returns: number;
+      };
+      admin_delete_questions: {
+        Args: {
+          p_question_ids: string[];
+        };
+        Returns: number;
       };
     };
     Enums: {

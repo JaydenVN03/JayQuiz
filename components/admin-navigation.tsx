@@ -9,6 +9,7 @@ const navigation = [
   ["Chương", "/admin/chapters"],
   ["Bộ đề", "/admin/quizzes"],
   ["Câu hỏi", "/admin/questions"],
+  ["Nhập Excel", "/admin/import-questions"],
 ] as const;
 
 export function AdminNavigation() {

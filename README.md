@@ -102,14 +102,15 @@ Nguyên tắc:
 | ADM-03 | Dashboard | Tổng quan số lượng nội dung | P1 |
 | ADM-04 | CRUD môn học | Tạo, xem, sửa, xóa/lưu trữ | P0 |
 | ADM-05 | CRUD chương | Tạo, xem, sửa, xóa/lưu trữ | P0 |
-| ADM-06 | CRUD bộ đề | Tạo và cấu hình bộ đề | P0 |
-| ADM-07 | CRUD câu hỏi | Quản lý nội dung câu hỏi | P0 |
+| ADM-06 | CRUD bộ đề | Tạo và cấu hình bộ đề trước, sau đó nhập câu hỏi bằng Excel | P0 |
+| ADM-07 | CRUD câu hỏi | Quản lý thư viện câu hỏi; bộ đề nhận câu hỏi qua Excel | P0 |
 | ADM-08 | Quản lý lựa chọn | Thêm/sửa/xóa đáp án và xác định đáp án đúng | P0 |
-| ADM-09 | Quản lý thứ tự | Sắp xếp chương, bộ đề, câu hỏi, lựa chọn | P0 |
+| ADM-09 | Quản lý thứ tự | Sắp xếp chương, bộ đề, lựa chọn và thứ tự câu hỏi theo dòng Excel | P0 |
 | ADM-10 | Nháp/xuất bản | Kiểm soát nội dung công khai | P0 |
 | ADM-11 | Xem trước | Xem đề theo giao diện người dùng | P0 |
 | ADM-12 | Import/export | Nhập/xuất dữ liệu hàng loạt | P1 |
 | ADM-13 | Xóa hàng loạt | Chọn và xóa nhiều môn học, chương, bộ đề hoặc câu hỏi cùng lúc | P1 |
+| ADM-14 | Nhập câu hỏi từ Excel | Thêm tối đa 500 câu hỏi và đáp án vào cuối bộ đề từ file `.xlsx` | P1 |
 
 ---
 
@@ -125,6 +126,7 @@ Nguyên tắc:
 6. Không xóa cứng nội dung đang được bộ đề đã xuất bản sử dụng nếu việc xóa làm hỏng dữ liệu tham chiếu. Ưu tiên kiểm tra quan hệ và/hoặc lưu trữ.
 7. Khi Admin sửa nội dung đã xuất bản, hệ thống phải tăng phiên bản bộ đề hoặc có chiến lược phát hiện nội dung thay đổi.
 8. Xóa hàng loạt phải được xác nhận; nếu có mục đang được nội dung khác sử dụng, từ chối toàn bộ thao tác thay vì xóa một phần.
+9. Nhập câu hỏi từ Excel phải kiểm tra toàn bộ file trước khi ghi; lỗi ở một dòng không được tạo câu hỏi dở dang. Câu hỏi được thêm vào cuối bộ đề và dùng trạng thái nháp, trừ khi bộ đề đã xuất bản.
 
 ### 5.2. Làm bài
 
@@ -530,6 +532,14 @@ Sao chép `.env.example` thành `.env.local` rồi điền giá trị từ Supab
 
 `@supabase/ssr` được dùng cho phiên cookie trong trình duyệt và server; `proxy.ts` đồng bộ cookie phiên trước khi trang Admin chạy. Mỗi Server Action vẫn xác minh Supabase user và bản ghi `admin_profiles`; RLS tiếp tục giới hạn thao tác database. `SUPABASE_SECRET_KEY` không được dùng cho các thao tác Admin và không đưa xuống client.
 
+### Nhập câu hỏi từ Excel
+
+Tạo và lưu bộ đề trước ở trạng thái nháp; không cần tạo câu hỏi trước. Trong Admin, mở trang **Nhập Excel** tại `/admin/import-questions`, chọn một bộ đề rồi tải một file Excel để nhập vào bộ đề đó; mỗi lần gửi chỉ nhận một file cho một bộ đề. Có thể nhập thêm một file khác sau này. Nhập câu hỏi từng mục từ biểu mẫu bộ đề đã được bỏ để tránh phải liên kết câu hỏi thủ công. Dữ liệu câu hỏi độc lập vẫn có thể được quản lý từ trang **Câu hỏi**.
+
+Điền dữ liệu vào sheet `Cau hoi` (không đổi tên hoặc thứ tự các cột). Mỗi dòng là một câu hỏi; chọn loại câu hỏi và độ khó từ danh sách dropdown có sẵn trong từng ô tương ứng. Loại câu hỏi gồm `single_choice`, `multiple_choice` hoặc `true_false`; độ khó gồm `easy`, `medium`, `hard` hoặc để trống. Điền từ 2 đến 10 cột đáp án và ghi số thứ tự đáp án đúng, ví dụ `2` hoặc `1,3`. Điểm mặc định là `1`. Có thể mở rộng một bộ đề trong trang **Bộ đề** để nhập trực tiếp cho bộ đề đó.
+
+Mỗi lần nhập hỗ trợ file `.xlsx` tối đa 5 MB và 500 câu hỏi. File được kiểm tra trước khi ghi; các câu hỏi mới được thêm vào cuối bộ đề. Khi nhập vào bộ đề đã xuất bản, câu hỏi mới được xuất bản cùng bộ đề và phiên bản bộ đề được tăng để làm mới tiến độ hiện có. Tính năng quản lý câu hỏi cũng yêu cầu migration `202610140003_admin_question_lifecycle.sql` để thêm câu hỏi trực tiếp vào bộ đề và xóa câu hỏi đồng bộ khỏi các bộ đề liên quan. Hãy áp dụng toàn bộ migration `202610140001`, `202610140002`, `202610140003` lên đúng Supabase project ứng dụng đang kết nối, ví dụ chạy `npx supabase db push --linked` sau khi liên kết project.
+
 ### Thiết lập database Supabase
 
 Cài Supabase CLI, sau đó chạy tại thư mục dự án:
@@ -556,7 +566,7 @@ on conflict (user_id) do update set role = 'admin';
 
 3. Mở `http://localhost:3000/admin/login` và đăng nhập. Nếu lệnh SQL không thêm hàng, kiểm tra email đã tồn tại trong Authentication → Users.
 
-Để áp dụng migration không cần đăng nhập Supabase CLI, mở SQL Editor của project rồi lần lượt chạy toàn bộ nội dung `supabase/migrations/202610120001_initial_schema.sql` và `supabase/seed.sql`:
+Để áp dụng migration không cần đăng nhập Supabase CLI, mở SQL Editor của project rồi lần lượt chạy toàn bộ migration theo thứ tự trong `supabase/migrations/`, sau đó chạy `supabase/seed.sql` nếu cần dữ liệu mẫu:
 
 ```text
 https://supabase.com/dashboard/project/altlbaskbyesrjhynujd/sql/new

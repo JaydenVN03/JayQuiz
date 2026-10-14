@@ -45,14 +45,17 @@ async function DashboardContent() {
       </section>
       <section className="admin-panel admin-dashboard-note">
         <div><span className="admin-panel-icon">✎</span><div><h2>Tiếp tục xây dựng thư viện đề</h2><p>{drafts.count ?? 0} bộ đề đang ở trạng thái nháp. Nội dung chỉ công khai sau khi xuất bản.</p></div></div>
-        <Link className="button button-primary" href="/admin/quizzes">Quản lý bộ đề</Link>
+        <div className="admin-dashboard-actions">
+          <Link className="button button-secondary" href="/admin/import-questions">Nhập câu hỏi từ Excel</Link>
+          <Link className="button button-primary" href="/admin/quizzes">Quản lý bộ đề</Link>
+        </div>
       </section>
       <section className="admin-panel">
         <h2>Quy trình xuất bản</h2>
         <ol className="admin-workflow">
           <li>Tạo môn học, sau đó thêm chương nếu cần.</li>
-          <li>Tạo câu hỏi, lựa chọn; đánh dấu đáp án đúng bằng dấu *.</li>
-          <li>Tạo bộ đề, chọn các câu hỏi và thứ tự hiển thị.</li>
+          <li>Tạo và lưu bộ đề ở trạng thái nháp.</li>
+          <li>Nhập câu hỏi cùng đáp án bằng một file Excel cho bộ đề.</li>
           <li>Xem trước nội dung rồi chuyển trạng thái sang “Đã xuất bản”.</li>
         </ol>
       </section>

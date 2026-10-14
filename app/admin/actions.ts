@@ -2,7 +2,9 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import * as XLSX from "xlsx";
 import { requireAdmin, createSupabaseAuthServerClient } from "@/lib/supabase/auth-server";
+import { QUIZ_EXCEL_HEADERS, QUIZ_EXCEL_OPTION_COUNT } from "@/lib/data/quiz-excel";
 import type { Database } from "@/lib/supabase/database.types";
 
 export type AdminFormState = {
@@ -15,6 +17,19 @@ const success = (message: string): AdminFormState => ({ success: true, message }
 const validId = (value: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 const statuses = ["draft", "published", "archived"] as const;
 type ContentStatus = Database["public"]["Enums"]["content_status"];
+type QuestionType = Database["public"]["Enums"]["question_type"];
+type QuestionDifficulty = Database["public"]["Enums"]["question_difficulty"];
+type ImportedQuizQuestion = {
+  content: string;
+  type: QuestionType;
+  difficulty: QuestionDifficulty | null;
+  explanation: string | null;
+  options: { content: string; is_correct: boolean }[];
+  points: number;
+};
+
+const MAX_QUIZ_IMPORT_FILE_SIZE = 5 * 1024 * 1024;
+const MAX_QUIZ_IMPORT_QUESTIONS = 500;
 
 function field(formData: FormData, name: string): string {
   return String(formData.get(name) ?? "").trim();
@@ -45,9 +60,142 @@ function validSlug(slug: string) {
   return /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug);
 }
 
+function readExcelCell(value: unknown): string {
+  return String(value ?? "").trim();
+}
+
+async function parseQuizExcel(file: File): Promise<ImportedQuizQuestion[]> {
+  if (file.size === 0) throw new Error("File Excel đang trống.");
+  if (file.size > MAX_QUIZ_IMPORT_FILE_SIZE) throw new Error("File Excel không được lớn hơn 5 MB.");
+  if (!file.name.toLocaleLowerCase("en").endsWith(".xlsx")) {
+    throw new Error("Chỉ hỗ trợ file Excel định dạng .xlsx.");
+  }
+
+  let workbook: XLSX.WorkBook;
+  let fileBytes: Uint8Array;
+  try {
+    fileBytes = new Uint8Array(await file.arrayBuffer());
+    if (fileBytes[0] !== 0x50 || fileBytes[1] !== 0x4b) {
+      throw new Error("invalid Excel file signature");
+    }
+    workbook = XLSX.read(fileBytes, { type: "array" });
+  } catch {
+    throw new Error("Không thể đọc file Excel. Hãy tải file mẫu và lưu lại dưới định dạng .xlsx.");
+  }
+  const worksheet = workbook.Sheets["Cau hoi"];
+  if (!worksheet) throw new Error('Không tìm thấy sheet "Cau hoi" trong file Excel.');
+  if (!worksheet["!ref"]) throw new Error("Sheet câu hỏi đang trống.");
+
+  const range = XLSX.utils.decode_range(worksheet["!ref"]);
+  if (range.s.r !== 0 || range.s.c !== 0) {
+    throw new Error("Các tiêu đề cột phải bắt đầu từ ô A1.");
+  }
+  if (range.e.r > MAX_QUIZ_IMPORT_QUESTIONS) {
+    throw new Error(`Mỗi file chỉ được nhập tối đa ${MAX_QUIZ_IMPORT_QUESTIONS} câu hỏi.`);
+  }
+  for (let row = range.s.r; row <= range.e.r; row += 1) {
+    for (let column = range.s.c; column <= range.e.c; column += 1) {
+      const cell = worksheet[XLSX.utils.encode_cell({ r: row, c: column })];
+      if (cell?.f || cell?.t === "e") {
+        throw new Error("Không hỗ trợ ô chứa công thức hoặc lỗi Excel; hãy nhập giá trị trực tiếp.");
+      }
+    }
+  }
+
+  const rows = XLSX.utils.sheet_to_json<unknown[]>(worksheet, {
+    header: 1,
+    raw: false,
+    defval: "",
+    blankrows: true,
+  });
+  const headers = rows[0]?.slice(0, QUIZ_EXCEL_HEADERS.length).map(readExcelCell) ?? [];
+  if (QUIZ_EXCEL_HEADERS.some((header, index) => headers[index] !== header)) {
+    throw new Error("Tên hoặc thứ tự cột không đúng mẫu. Hãy tải lại file mẫu Excel.");
+  }
+
+  const questions: ImportedQuizQuestion[] = [];
+  for (const [index, row] of rows.slice(1).entries()) {
+    const rowNumber = index + 2;
+    const cells = Array.from({ length: QUIZ_EXCEL_HEADERS.length }, (_, cellIndex) =>
+      readExcelCell(row[cellIndex]),
+    );
+    if (cells.every((cell) => !cell)) continue;
+
+    const [content, rawType, rawDifficulty, explanation] = cells;
+    if (!content) throw new Error(`Dòng ${rowNumber}: nội dung câu hỏi là bắt buộc.`);
+    if (content.length > 10000) throw new Error(`Dòng ${rowNumber}: nội dung câu hỏi tối đa 10.000 ký tự.`);
+    if (rawType !== "single_choice" && rawType !== "multiple_choice" && rawType !== "true_false") {
+      throw new Error(`Dòng ${rowNumber}: loại câu hỏi phải là single_choice, multiple_choice hoặc true_false.`);
+    }
+    if (rawDifficulty && rawDifficulty !== "easy" && rawDifficulty !== "medium" && rawDifficulty !== "hard") {
+      throw new Error(`Dòng ${rowNumber}: độ khó phải là easy, medium, hard hoặc để trống.`);
+    }
+
+    const optionCells = cells.slice(4, 4 + QUIZ_EXCEL_OPTION_COUNT);
+    const options = optionCells.flatMap((optionContent, optionIndex) =>
+      optionContent ? [{ content: optionContent, index: optionIndex + 1 }] : [],
+    );
+    if (options.length < 2) throw new Error(`Dòng ${rowNumber}: cần ít nhất 2 đáp án.`);
+    const invalidOption = options.find((option) => option.content.length > 1000);
+    if (invalidOption) throw new Error(`Dòng ${rowNumber}: mỗi đáp án tối đa 1.000 ký tự.`);
+
+    const rawCorrectAnswers = cells[4 + QUIZ_EXCEL_OPTION_COUNT];
+    const correctAnswers = rawCorrectAnswers.split(",").map((answer) => answer.trim());
+    if (!rawCorrectAnswers || correctAnswers.some((answer) => !/^[1-9]\d*$/.test(answer))) {
+      throw new Error(`Dòng ${rowNumber}: nhập số thứ tự đáp án đúng, ví dụ 2 hoặc 1,3.`);
+    }
+    const correctIndices = correctAnswers.map(Number);
+    if (new Set(correctIndices).size !== correctIndices.length
+      || correctIndices.some((answer) => !options.some((option) => option.index === answer))) {
+      throw new Error(`Dòng ${rowNumber}: đáp án đúng phải trỏ đến các cột đáp án đã điền và không được trùng.`);
+    }
+    if ((rawType === "single_choice" || rawType === "true_false") && correctIndices.length !== 1) {
+      throw new Error(`Dòng ${rowNumber}: loại câu hỏi này phải có chính xác một đáp án đúng.`);
+    }
+    if (rawType === "multiple_choice" && correctIndices.length < 1) {
+      throw new Error(`Dòng ${rowNumber}: câu hỏi nhiều đáp án phải có ít nhất một đáp án đúng.`);
+    }
+    if (rawType === "true_false" && options.length !== 2) {
+      throw new Error(`Dòng ${rowNumber}: câu hỏi đúng/sai phải có chính xác hai đáp án.`);
+    }
+
+    const rawPoints = cells[5 + QUIZ_EXCEL_OPTION_COUNT];
+    const points = rawPoints ? Number(rawPoints) : 1;
+    if (!Number.isFinite(points) || points <= 0 || points > 99999.99) {
+      throw new Error(`Dòng ${rowNumber}: điểm phải lớn hơn 0 và không vượt quá 99.999,99.`);
+    }
+
+    questions.push({
+      content,
+      type: rawType,
+      difficulty: rawDifficulty ? rawDifficulty as QuestionDifficulty : null,
+      explanation: explanation || null,
+      options: options.map((option) => ({
+        content: option.content,
+        is_correct: correctIndices.includes(option.index),
+      })),
+      points,
+    });
+    if (questions.length > MAX_QUIZ_IMPORT_QUESTIONS) {
+      throw new Error(`Mỗi file chỉ được nhập tối đa ${MAX_QUIZ_IMPORT_QUESTIONS} câu hỏi.`);
+    }
+  }
+  if (questions.length === 0) throw new Error("File Excel chưa có câu hỏi để nhập.");
+  return questions;
+}
+
 function supabaseErrorMessage(message: string) {
   if (message.includes("duplicate key")) return "Slug hoặc thứ tự này đã được sử dụng.";
   if (message.includes("foreign key")) return "Không thể xóa nội dung đang được nội dung khác sử dụng.";
+  if (message.includes("PGRST202") || message.includes("Could not find the function")) {
+    return "Cơ sở dữ liệu chưa nhận được migration quản lý câu hỏi. Hãy áp dụng migration mới nhất rồi tải lại trang.";
+  }
+  if (message.includes("One or more questions were not found")) {
+    return "Một hoặc nhiều câu hỏi không còn tồn tại. Hãy tải lại danh sách rồi thử lại.";
+  }
+  if (message.includes("A published quiz requires published questions")) {
+    return "Bộ đề đã xuất bản chỉ nhận câu hỏi cũng ở trạng thái đã xuất bản.";
+  }
   if (message.includes("A quiz can only") || message.includes("A quiz must") || message.includes("Every published")) {
     return "Chưa thể xuất bản: hãy kiểm tra môn/chương đã xuất bản và câu hỏi cùng đáp án hợp lệ.";
   }
@@ -167,15 +315,24 @@ export async function saveAdminContent(
       const timeLimit = optionalPositiveInteger(field(formData, "time_limit_seconds"), "Thời lượng");
       const passScoreRaw = field(formData, "pass_score");
       const passScore = passScoreRaw ? Number(passScoreRaw) : null;
-      const questionIds = Array.from(new Set(formData.getAll("question_ids").map(String)));
       if (!validId(subjectId) || (chapterId && !validId(chapterId)) || !title || title.length > 160 || !validSlug(slug)) {
         return failure("Môn học, tên bộ đề và slug hợp lệ là bắt buộc.");
       }
       if (passScore !== null && (!Number.isFinite(passScore) || passScore < 0)) {
         return failure("Điểm đạt phải là số không âm.");
       }
-      if (questionIds.some((questionId) => !validId(questionId))) {
-        return failure("Danh sách câu hỏi không hợp lệ.");
+      if (status === "published") {
+        if (!id) {
+          return failure("Hãy lưu bộ đề ở trạng thái nháp, nhập câu hỏi từ file Excel rồi xuất bản bộ đề.");
+        }
+        const { count, error: relationsError } = await supabase
+          .from("quiz_questions")
+          .select("question_id", { count: "exact", head: true })
+          .eq("quiz_id", id);
+        if (relationsError) return failure(supabaseErrorMessage(relationsError.message));
+        if (!count) {
+          return failure("Hãy nhập câu hỏi từ file Excel trước khi xuất bản bộ đề.");
+        }
       }
 
       let version = 1;
@@ -187,20 +344,6 @@ export async function saveAdminContent(
           .single();
         if (existingError) return failure(supabaseErrorMessage(existingError.message));
         version = existing.version + 1;
-      }
-      const sortedQuestions = questionIds.map((questionId) => ({
-        question_id: questionId,
-        sort_order: positiveInteger(field(formData, `order_${questionId}`) || String(questionIds.indexOf(questionId) + 1), "Thứ tự câu hỏi"),
-        points: Number(field(formData, `points_${questionId}`) || "1"),
-      }));
-      if (sortedQuestions.some((question) => question.sort_order === 0)) {
-        return failure("Thứ tự câu hỏi phải bắt đầu từ 1.");
-      }
-      if (sortedQuestions.some((question) => !Number.isFinite(question.points) || question.points <= 0)) {
-        return failure("Điểm mỗi câu phải là số lớn hơn 0.");
-      }
-      if (new Set(sortedQuestions.map((question) => question.sort_order)).size !== sortedQuestions.length) {
-        return failure("Thứ tự câu hỏi trong bộ đề không được trùng nhau.");
       }
       contentId = id || crypto.randomUUID();
       const { error } = await supabase.rpc("admin_save_quiz", {
@@ -214,11 +357,12 @@ export async function saveAdminContent(
         p_time_limit_seconds: timeLimit,
         p_pass_score: passScore,
         p_version: version,
-        p_questions: sortedQuestions,
+        p_questions: null,
       });
       if (error) return failure(supabaseErrorMessage(error.message));
     } else if (entity === "questions") {
       const content = field(formData, "content");
+      const quizId = field(formData, "quiz_id");
       const questionType = field(formData, "type");
       const difficulty = field(formData, "difficulty") || null;
       const validTypes = ["single_choice", "multiple_choice", "true_false"];
@@ -252,7 +396,7 @@ export async function saveAdminContent(
         return failure("Câu hỏi đúng/sai phải có chính xác hai lựa chọn.");
       }
       contentId = id || crypto.randomUUID();
-      const { error } = await supabase.rpc("admin_save_question", {
+      const questionValues = {
         p_question_id: contentId,
         p_content: content,
         p_type: questionType as Database["public"]["Enums"]["question_type"],
@@ -260,8 +404,18 @@ export async function saveAdminContent(
         p_difficulty: difficulty as Database["public"]["Enums"]["question_difficulty"] | null,
         p_status: status,
         p_options: options,
-      });
-      if (error) return failure(supabaseErrorMessage(error.message));
+      };
+      if (!id) {
+        if (!validId(quizId)) return failure("Vui lòng chọn bộ đề cần thêm câu hỏi.");
+        const { error } = await supabase.rpc("admin_add_quiz_question", {
+          ...questionValues,
+          p_quiz_id: quizId,
+        });
+        if (error) return failure(supabaseErrorMessage(error.message));
+      } else {
+        const { error } = await supabase.rpc("admin_save_question", questionValues);
+        if (error) return failure(supabaseErrorMessage(error.message));
+      }
     } else {
       return failure("Loại nội dung không hợp lệ.");
     }
@@ -292,8 +446,13 @@ export async function deleteAdminContent(
   } as const;
   if (!(entity in tables)) return failure("Loại nội dung không hợp lệ.");
   const table = tables[entity as keyof typeof tables];
-  const { error } = await supabase.from(table).delete().eq("id", id);
-  if (error) return failure(supabaseErrorMessage(error.message));
+  if (entity === "questions") {
+    const { error } = await supabase.rpc("admin_delete_questions", { p_question_ids: [id] });
+    if (error) return failure(supabaseErrorMessage(error.message));
+  } else {
+    const { error } = await supabase.from(table).delete().eq("id", id);
+    if (error) return failure(supabaseErrorMessage(error.message));
+  }
 
   revalidatePath("/admin", "layout");
   revalidatePath("/", "page");
@@ -319,11 +478,92 @@ export async function bulkDeleteAdminContent(
   } as const;
   if (!Object.hasOwn(tables, entity)) return failure("Loại nội dung không hợp lệ.");
   const table = tables[entity as keyof typeof tables];
-  const { error } = await supabase.from(table).delete().in("id", ids);
-  if (error) return failure(supabaseErrorMessage(error.message));
+  if (entity === "questions") {
+    const { data, error } = await supabase.rpc("admin_delete_questions", { p_question_ids: ids });
+    if (error) return failure(supabaseErrorMessage(error.message));
+    if (data !== ids.length) return failure("Số câu hỏi được xóa không khớp. Hãy tải lại danh sách rồi thử lại.");
+  } else {
+    const { error } = await supabase.from(table).delete().in("id", ids);
+    if (error) return failure(supabaseErrorMessage(error.message));
+  }
 
   revalidatePath("/admin", "layout");
   revalidatePath("/", "page");
   revalidatePath("/subjects", "page");
   return success(`Đã xóa ${ids.length} mục.`);
+}
+
+export async function bulkPublishAdminContent(
+  _previousState: AdminFormState,
+  formData: FormData,
+): Promise<AdminFormState> {
+  const { supabase } = await requireAdmin();
+  const entity = field(formData, "entity");
+  const ids = Array.from(new Set(formData.getAll("id").map((value) => String(value).trim())));
+  if (ids.length === 0) return failure("Vui lòng chọn ít nhất một mục cần xuất bản.");
+  if (ids.some((id) => !validId(id))) return failure("Danh sách mã nội dung không hợp lệ.");
+
+  const tables = {
+    subjects: "subjects",
+    chapters: "chapters",
+    quizzes: "quizzes",
+    questions: "questions",
+  } as const;
+  if (!Object.hasOwn(tables, entity)) return failure("Loại nội dung không hợp lệ.");
+  const table = tables[entity as keyof typeof tables];
+  const { data, error } = await supabase
+    .from(table)
+    .update({ status: "published" })
+    .in("id", ids)
+    .select("id");
+  if (error) return failure(supabaseErrorMessage(error.message));
+  if (data.length !== ids.length) {
+    return failure("Một hoặc nhiều mục đã chọn không còn tồn tại. Hãy tải lại danh sách rồi thử lại.");
+  }
+
+  revalidatePath("/admin", "layout");
+  revalidatePath("/", "page");
+  revalidatePath("/subjects", "page");
+  return success(`Đã xuất bản ${data.length} mục.`);
+}
+
+export async function importQuizQuestionsFromExcel(
+  _previousState: AdminFormState,
+  formData: FormData,
+): Promise<AdminFormState> {
+  const { supabase } = await requireAdmin();
+  const quizId = field(formData, "quiz_id");
+  const file = formData.get("excel_file");
+  if (!validId(quizId)) return failure("Mã bộ đề không hợp lệ.");
+  if (!(file instanceof File)) return failure("Vui lòng chọn file Excel .xlsx.");
+
+  let questions: ImportedQuizQuestion[];
+  try {
+    questions = await parseQuizExcel(file);
+  } catch (error) {
+    return failure(error instanceof Error ? error.message : "Không thể đọc file Excel.");
+  }
+
+  const { data, error } = await supabase.rpc("admin_import_quiz_questions", {
+    p_quiz_id: quizId,
+    p_questions: questions,
+  });
+  if (error) {
+    if (error.code === "PGRST202" || error.message.includes("Could not find the function")) {
+      return failure("Cơ sở dữ liệu chưa nhận được migration nhập Excel. Hãy áp dụng migration 202610140001_admin_import_quiz_questions.sql rồi tải lại trang.");
+    }
+    if (error.message.includes("Quiz not found")) return failure("Không tìm thấy bộ đề cần nhập câu hỏi.");
+    if (error.message.startsWith("Question import")) {
+      return failure("Dữ liệu câu hỏi không hợp lệ; hãy kiểm tra loại câu hỏi, đáp án và điểm trong file Excel.");
+    }
+    return failure(`Không thể nhập câu hỏi: ${error.message}`);
+  }
+  if (data !== questions.length) {
+    return failure("Cơ sở dữ liệu không xác nhận đủ số câu hỏi đã nhập.");
+  }
+
+  revalidatePath("/admin", "layout");
+  revalidatePath("/", "page");
+  revalidatePath("/subjects", "page");
+  return success(`Đã thêm ${data} câu hỏi vào bộ đề.`);
 }

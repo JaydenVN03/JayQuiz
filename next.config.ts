@@ -5,6 +5,9 @@ const nextConfig: NextConfig = {
   outputFileTracingRoot: process.cwd(),
   experimental: {
     agentFeedback: true,
+    serverActions: {
+      bodySizeLimit: "6mb",
+    },
   },
   cacheComponents: true,
   partialPrefetching: true,
